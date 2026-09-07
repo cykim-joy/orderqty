@@ -4,7 +4,7 @@ import { v4 as uuidv4 } from 'uuid'
 
 const EMPTY_FORM = {
   skuId: '', squad: '', manager: '', salesChannel: '',
-  backorderQty: '', orderStatus: '', secured: false, month: ''
+  backorderQty: '', securedQty: 0, orderStatus: '', secured: false, month: ''
 }
 
 const now = new Date()
@@ -29,6 +29,8 @@ export default function SquadTab({ entries, setEntries, skus, settings }) {
   const [errors, setErrors] = useState({})
   const [csvStatus, setCsvStatus] = useState(null)
   const csvFileRef = useRef(null)
+  // 인라인 확보 수량 편집: {id: 입력중인 값}
+  const [pendingSecured, setPendingSecured] = useState({})
 
   const monthOptions = useMemo(() => {
     const months = []
@@ -76,6 +78,7 @@ export default function SquadTab({ entries, setEntries, skus, settings }) {
     setEditingId(entry.id)
     setForm({ skuId: entry.skuId, squad: entry.squad, manager: entry.manager,
       salesChannel: entry.salesChannel, backorderQty: entry.backorderQty,
+      securedQty: entry.securedQty || 0,
       orderStatus: entry.orderStatus, secured: entry.secured, month: entry.month })
     setErrors({})
     setShowModal(true)
@@ -96,7 +99,11 @@ export default function SquadTab({ entries, setEntries, skus, settings }) {
 
   const handleSave = () => {
     if (!validate()) return
-    const data = { ...form, backorderQty: Number(form.backorderQty) }
+    const data = {
+      ...form,
+      backorderQty: Number(form.backorderQty),
+      securedQty: Math.min(Number(form.securedQty) || 0, Number(form.backorderQty)),
+    }
     if (editingId) {
       setEntries(prev => prev.map(e => e.id === editingId ? { ...e, ...data } : e))
     } else {
@@ -215,6 +222,7 @@ export default function SquadTab({ entries, setEntries, skus, settings }) {
           manager:      headers.findIndex(h => h === '담당자'),
           salesChannel: headers.findIndex(h => h === '판매처코드' || h === '판매처 코드'),
           backorderQty: headers.findIndex(h => h === '백오더수량' || h === '백오더 수량'),
+          securedQty:   headers.findIndex(h => h === '확보수량' || h === '확보 수량'),
           orderStatus:  headers.findIndex(h => h === '발주현황' || h === '발주 현황'),
           secured:      headers.findIndex(h => h === '확보여부' || h === '확보 여부'),
         }
@@ -237,7 +245,9 @@ export default function SquadTab({ entries, setEntries, skus, settings }) {
           const qty = Number(qtyRaw)
           if (isNaN(qty) || qty < 0) { warnings.push(`행 ${i + 1}: 수량 오류 → 건너뜀`); continue }
 
-          const securedVal = (cols[idx.secured] || '').trim().toUpperCase()
+          const securedVal  = (cols[idx.secured] || '').trim().toUpperCase()
+          const sqRaw       = idx.securedQty >= 0 ? (cols[idx.securedQty] || '').replace(/,/g, '') : '0'
+          const securedQtyN = Math.min(Math.max(0, Number(sqRaw) || 0), qty)
           newEntries.push({
             id: uuidv4(),
             createdAt: new Date().toISOString(),
@@ -247,6 +257,7 @@ export default function SquadTab({ entries, setEntries, skus, settings }) {
             manager:      idx.manager >= 0      ? (cols[idx.manager] || '').trim()      : '',
             salesChannel: idx.salesChannel >= 0 ? (cols[idx.salesChannel] || '').trim() : '',
             backorderQty: qty,
+            securedQty:   securedQtyN,
             orderStatus:  idx.orderStatus >= 0  ? (cols[idx.orderStatus] || '').trim()  : '',
             secured:      securedVal === 'Y' || securedVal === 'O',
           })
@@ -287,9 +298,28 @@ export default function SquadTab({ entries, setEntries, skus, settings }) {
     </div>
   )
 
-  const totalBackorder = filtered.reduce((sum, e) => sum + Number(e.backorderQty || 0), 0)
-  const securedCount = filtered.filter(e => e.secured).length
-  const securedQty = filtered.filter(e => e.secured).reduce((sum, e) => sum + Number(e.backorderQty || 0), 0)
+  const totalBackorder   = filtered.reduce((sum, e) => sum + Number(e.backorderQty || 0), 0)
+  const totalSecuredQty  = filtered.reduce((sum, e) => sum + Number(e.securedQty  || 0), 0)
+  const totalRemaining   = filtered.reduce((sum, e) => sum + Math.max(0, Number(e.backorderQty || 0) - Number(e.securedQty || 0)), 0)
+  const securedCount     = filtered.filter(e => e.secured).length
+
+  // 행 배경색: 부분확보=노랑, 전체확보=초록, 미확보=기본
+  const getRowBg = (entry) => {
+    const sq = Number(entry.securedQty || 0)
+    const bq = Number(entry.backorderQty || 0)
+    if (entry.secured || sq >= bq && sq > 0) return 'bg-green-50/40'
+    if (sq > 0)  return 'bg-amber-50/50'
+    return ''
+  }
+
+  // 인라인 확보 수량 저장 (blur 시)
+  const commitSecuredQty = (entry) => {
+    const raw = pendingSecured[entry.id]
+    if (raw === undefined) return
+    const val = Math.max(0, Math.min(Number(raw) || 0, Number(entry.backorderQty || 0)))
+    setEntries(prev => prev.map(e => e.id === entry.id ? { ...e, securedQty: val } : e))
+    setPendingSecured(prev => { const n = { ...prev }; delete n[entry.id]; return n })
+  }
 
   return (
     <div className="space-y-4">
@@ -297,8 +327,8 @@ export default function SquadTab({ entries, setEntries, skus, settings }) {
       <div className="grid grid-cols-3 gap-4">
         {[
           { label: '총 백오더 수량', value: totalBackorder.toLocaleString(), sub: `${filtered.length}건`, color: 'blue' },
-          { label: '확보 완료 수량', value: securedQty.toLocaleString(), sub: `${securedCount}건`, color: 'green' },
-          { label: '미확보 수량', value: (totalBackorder - securedQty).toLocaleString(), sub: `${filtered.length - securedCount}건`, color: 'orange' },
+          { label: '확보 수량', value: totalSecuredQty.toLocaleString(), sub: `확보 완료 ${securedCount}건`, color: 'green' },
+          { label: '미확보 수량', value: totalRemaining.toLocaleString(), sub: `${filtered.length - securedCount}건 미완료`, color: 'orange' },
         ].map(card => (
           <div key={card.label} className="bg-white rounded-xl border border-gray-200 px-5 py-4 shadow-sm">
             <p className="text-xs text-gray-500 font-medium">{card.label}</p>
@@ -399,6 +429,8 @@ export default function SquadTab({ entries, setEntries, skus, settings }) {
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">담당자</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">판매처 코드</th>
                 <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">백오더 수량</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">확보 수량</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">미확보</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">발주 현황</th>
                 <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">확보 여부</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">PO Date</th>
@@ -408,7 +440,7 @@ export default function SquadTab({ entries, setEntries, skus, settings }) {
             <tbody className="divide-y divide-gray-50">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-6 py-16 text-center">
+                  <td colSpan={11} className="px-6 py-16 text-center">
                     <UsersIcon className="w-10 h-10 text-gray-200 mx-auto mb-3" />
                     <p className="text-gray-400 text-sm">항목을 추가해주세요</p>
                   </td>
@@ -418,7 +450,7 @@ export default function SquadTab({ entries, setEntries, skus, settings }) {
                   const sku = getSku(entry.skuId)
                   const tier = tierOfChannel(entry.salesChannel)
                   return (
-                    <tr key={entry.id} className={`hover:bg-gray-50/60 transition-colors ${entry.secured ? 'bg-green-50/20' : ''}`}>
+                    <tr key={entry.id} className={`hover:bg-gray-50/60 transition-colors ${getRowBg(entry)}`}>
                       <td className="px-4 py-3">
                         <span className="inline-block px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs font-medium">{entry.squad}</span>
                       </td>
@@ -438,6 +470,28 @@ export default function SquadTab({ entries, setEntries, skus, settings }) {
                         </div>
                       </td>
                       <td className="px-4 py-3 text-right font-semibold text-gray-900">{Number(entry.backorderQty).toLocaleString()}</td>
+                      {/* 확보 수량 — 인라인 입력 */}
+                      <td className="px-4 py-3 text-right">
+                        <input
+                          type="number" min="0" max={entry.backorderQty}
+                          value={pendingSecured[entry.id] !== undefined ? pendingSecured[entry.id] : (entry.securedQty || 0)}
+                          onChange={ev => setPendingSecured(prev => ({ ...prev, [entry.id]: ev.target.value }))}
+                          onBlur={() => commitSecuredQty(entry)}
+                          onKeyDown={ev => { if (ev.key === 'Enter') { ev.target.blur() } }}
+                          className="w-20 px-2 py-1 border border-gray-200 rounded text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent bg-white"
+                        />
+                      </td>
+                      {/* 미확보 수량 — 자동계산 */}
+                      <td className="px-4 py-3 text-right">
+                        {(() => {
+                          const sq = Number(entry.securedQty || 0)
+                          const bq = Number(entry.backorderQty || 0)
+                          const rem = bq - sq
+                          if (entry.secured || rem <= 0) return <span className="text-xs font-medium text-green-600">완료</span>
+                          if (sq > 0) return <span className="text-sm font-semibold text-amber-600">{rem.toLocaleString()}</span>
+                          return <span className="text-sm text-gray-400">{rem.toLocaleString()}</span>
+                        })()}
+                      </td>
                       <td className="px-4 py-3"><StatusBadge status={entry.orderStatus} /></td>
                       <td className="px-4 py-3 text-center">
                         <button onClick={() => toggleSecured(entry.id)} className="transition-colors">
@@ -537,6 +591,17 @@ export default function SquadTab({ entries, setEntries, skus, settings }) {
                     onChange={e => setForm(p => ({ ...p, backorderQty: e.target.value }))}
                     className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${errors.backorderQty ? 'border-red-400' : 'border-gray-200'}`} />
                   {errors.backorderQty && <p className="text-xs text-red-500 mt-1">{errors.backorderQty}</p>}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">확보 수량</label>
+                  <input type="number" min="0" max={Number(form.backorderQty) || undefined} placeholder="0" value={form.securedQty}
+                    onChange={e => setForm(p => ({ ...p, securedQty: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  {Number(form.backorderQty) > 0 && (
+                    <p className="text-xs text-gray-400 mt-1">
+                      미확보: {Math.max(0, Number(form.backorderQty) - Number(form.securedQty || 0)).toLocaleString()}
+                    </p>
+                  )}
                 </div>
               </div>
 
