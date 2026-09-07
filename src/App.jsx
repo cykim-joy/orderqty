@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Package, Users, BarChart3, Settings } from 'lucide-react'
+import { Package, Users, BarChart3, Settings, Shield } from 'lucide-react'
 import { LogOut } from 'lucide-react'
 import SKUTab from './components/SKUTab'
 import SquadTab from './components/SquadTab'
 import FeedbackTab from './components/FeedbackTab'
 import SettingsTab from './components/SettingsTab'
+import PermissionTab from './components/PermissionTab'
 import LoginPage from './components/LoginPage'
 import { DEFAULT_SETTINGS, migrateSettings } from './utils/storage'
 import {
@@ -12,6 +13,7 @@ import {
   fetchEntries, upsertEntry, deleteEntry, upsertEntries,
   fetchSettings, saveSettings,
   fetchFeedbackNotes, saveFeedbackNote,
+  fetchAuthorizedEmails,
 } from './utils/db'
 
 const AUTH_KEY = 'backorder_auth_user'
@@ -25,18 +27,20 @@ export default function App() {
   const [entries, setEntries] = useState([])
   const [settings, setSettings] = useState(DEFAULT_SETTINGS)
   const [feedbackNotes, setFeedbackNotes] = useState({})
+  const [authorizedEmails, setAuthorizedEmails] = useState([])
   const [loading, setLoading] = useState(true)
 
   // 초기 데이터 로드
   useEffect(() => {
     if (!user) return
     setLoading(true)
-    Promise.all([fetchSkus(), fetchEntries(), fetchSettings(), fetchFeedbackNotes()])
-      .then(([s, e, st, fn]) => {
+    Promise.all([fetchSkus(), fetchEntries(), fetchSettings(), fetchFeedbackNotes(), fetchAuthorizedEmails()])
+      .then(([s, e, st, fn, ae]) => {
         setSkus(s)
         setEntries(e)
         setSettings(migrateSettings(st || DEFAULT_SETTINGS))
         setFeedbackNotes(fn)
+        setAuthorizedEmails(ae)
       })
       .catch(console.error)
       .finally(() => setLoading(false))
@@ -97,11 +101,16 @@ export default function App() {
 
   if (!user) return <LoginPage onLogin={handleLogin} />
 
+  // 목록이 비어있으면 모든 사용자 편집 가능, 있으면 목록에 있는 계정만 편집 가능
+  const canEdit = authorizedEmails.length === 0
+    || authorizedEmails.some(e => e.email === user.email?.toLowerCase())
+
   const tabs = [
-    { id: 'sku', label: 'SKU 관리', icon: Package },
-    { id: 'squad', label: '스쿼드별 취합', icon: Users },
-    { id: 'feedback', label: '월별 FEEDBACK', icon: BarChart3 },
-    { id: 'settings', label: '드롭다운 설정', icon: Settings },
+    { id: 'sku',        label: 'SKU 관리',       icon: Package  },
+    { id: 'squad',      label: '스쿼드별 취합',   icon: Users    },
+    { id: 'feedback',   label: '월별 FEEDBACK',  icon: BarChart3 },
+    { id: 'settings',   label: '드롭다운 설정',   icon: Settings  },
+    { id: 'permission', label: '수정권한관리',    icon: Shield    },
   ]
 
   return (
@@ -155,10 +164,11 @@ export default function App() {
           </div>
         ) : (
           <>
-            {activeTab === 'sku' && <SKUTab skus={skus} setSkus={handleSetSkus} />}
-            {activeTab === 'squad' && <SquadTab entries={entries} setEntries={handleSetEntries} skus={skus} settings={settings} />}
-            {activeTab === 'feedback' && <FeedbackTab entries={entries} skus={skus} feedbackNotes={feedbackNotes} setFeedbackNotes={handleSetFeedbackNotes} />}
-            {activeTab === 'settings' && <SettingsTab settings={settings} setSettings={handleSetSettings} />}
+            {activeTab === 'sku'        && <SKUTab skus={skus} setSkus={handleSetSkus} />}
+            {activeTab === 'squad'      && <SquadTab entries={entries} setEntries={handleSetEntries} skus={skus} settings={settings} canEdit={canEdit} />}
+            {activeTab === 'feedback'   && <FeedbackTab entries={entries} skus={skus} feedbackNotes={feedbackNotes} setFeedbackNotes={handleSetFeedbackNotes} />}
+            {activeTab === 'settings'   && <SettingsTab settings={settings} setSettings={handleSetSettings} />}
+            {activeTab === 'permission' && <PermissionTab authorizedEmails={authorizedEmails} setAuthorizedEmails={setAuthorizedEmails} currentUser={user} />}
           </>
         )}
       </div>

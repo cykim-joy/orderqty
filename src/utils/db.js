@@ -111,3 +111,24 @@ export const saveFeedbackNote = async (month, note) => {
   const { error } = await supabase.from('feedback_notes').upsert({ month, note })
   if (error) throw error
 }
+
+// ── AUTHORIZED EMAILS ─────────────────────────────────
+export const fetchAuthorizedEmails = async () => {
+  const { data, error } = await supabase.from('authorized_emails').select('*').order('created_at')
+  if (error) throw error
+  return data.map(row => ({ id: row.id, email: row.email, name: row.name || '', createdAt: row.created_at }))
+}
+
+export const addAuthorizedEmail = async ({ email, name }) => {
+  const { data, error } = await supabase
+    .from('authorized_emails')
+    .insert({ email: email.toLowerCase().trim(), name: name || '' })
+    .select().single()
+  if (error) throw error
+  return { id: data.id, email: data.email, name: data.name, createdAt: data.created_at }
+}
+
+export const removeAuthorizedEmail = async (id) => {
+  const { error } = await supabase.from('authorized_emails').delete().eq('id', id)
+  if (error) throw error
+}

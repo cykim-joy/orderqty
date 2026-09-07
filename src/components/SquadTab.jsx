@@ -18,7 +18,7 @@ const getTierColor = (tier) => {
   return 'bg-gray-100 text-gray-600'
 }
 
-export default function SquadTab({ entries, setEntries, skus, settings }) {
+export default function SquadTab({ entries, setEntries, skus, settings, canEdit = true }) {
   const [filterSquad, setFilterSquad] = useState('전체')
   const [filterTier, setFilterTier] = useState('전체')
   const [filterMonth, setFilterMonth] = useState(currentMonth)
@@ -395,17 +395,24 @@ export default function SquadTab({ entries, setEntries, skus, settings }) {
               <Download className="w-4 h-4" />
               양식 다운로드
             </button>
-            <button onClick={() => csvFileRef.current?.click()}
-              className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors">
-              <Upload className="w-4 h-4" />
-              CSV 업로드
-            </button>
-            <input ref={csvFileRef} type="file" accept=".csv" className="hidden" onChange={handleCsvUpload} />
-            <button onClick={openAdd}
-              className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
-              <Plus className="w-4 h-4" />
-              항목 추가
-            </button>
+            {canEdit && (
+              <>
+                <button onClick={() => csvFileRef.current?.click()}
+                  className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors">
+                  <Upload className="w-4 h-4" />
+                  CSV 업로드
+                </button>
+                <input ref={csvFileRef} type="file" accept=".csv" className="hidden" onChange={handleCsvUpload} />
+                <button onClick={openAdd}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
+                  <Plus className="w-4 h-4" />
+                  항목 추가
+                </button>
+              </>
+            )}
+            {!canEdit && (
+              <span className="text-xs text-gray-400 px-2">🔒 읽기 전용</span>
+            )}
           </div>
         </div>
 
@@ -470,16 +477,20 @@ export default function SquadTab({ entries, setEntries, skus, settings }) {
                         </div>
                       </td>
                       <td className="px-4 py-3 text-right font-semibold text-gray-900">{Number(entry.backorderQty).toLocaleString()}</td>
-                      {/* 확보 수량 — 인라인 입력 */}
+                      {/* 확보 수량 — 인라인 입력 (권한 있을 때만 편집 가능) */}
                       <td className="px-4 py-3 text-right">
-                        <input
-                          type="number" min="0" max={entry.backorderQty}
-                          value={pendingSecured[entry.id] !== undefined ? pendingSecured[entry.id] : (entry.securedQty || 0)}
-                          onChange={ev => setPendingSecured(prev => ({ ...prev, [entry.id]: ev.target.value }))}
-                          onBlur={() => commitSecuredQty(entry)}
-                          onKeyDown={ev => { if (ev.key === 'Enter') { ev.target.blur() } }}
-                          className="w-20 px-2 py-1 border border-gray-200 rounded text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent bg-white"
-                        />
+                        {canEdit ? (
+                          <input
+                            type="number" min="0" max={entry.backorderQty}
+                            value={pendingSecured[entry.id] !== undefined ? pendingSecured[entry.id] : (entry.securedQty || 0)}
+                            onChange={ev => setPendingSecured(prev => ({ ...prev, [entry.id]: ev.target.value }))}
+                            onBlur={() => commitSecuredQty(entry)}
+                            onKeyDown={ev => { if (ev.key === 'Enter') { ev.target.blur() } }}
+                            className="w-20 px-2 py-1 border border-gray-200 rounded text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent bg-white"
+                          />
+                        ) : (
+                          <span className="text-sm text-gray-700">{Number(entry.securedQty || 0).toLocaleString()}</span>
+                        )}
                       </td>
                       {/* 미확보 수량 — 자동계산 */}
                       <td className="px-4 py-3 text-right">
@@ -494,22 +505,27 @@ export default function SquadTab({ entries, setEntries, skus, settings }) {
                       </td>
                       <td className="px-4 py-3"><StatusBadge status={entry.orderStatus} /></td>
                       <td className="px-4 py-3 text-center">
-                        <button onClick={() => toggleSecured(entry.id)} className="transition-colors">
+                        <button onClick={() => canEdit && toggleSecured(entry.id)}
+                          className={`transition-colors ${!canEdit ? 'cursor-default' : ''}`}>
                           {entry.secured
                             ? <CheckSquare className="w-5 h-5 text-green-500 mx-auto" />
-                            : <Square className="w-5 h-5 text-gray-300 hover:text-gray-400 mx-auto" />
+                            : <Square className={`w-5 h-5 mx-auto ${canEdit ? 'text-gray-300 hover:text-gray-400' : 'text-gray-200'}`} />
                           }
                         </button>
                       </td>
                       <td className="px-4 py-3 text-gray-500 text-xs">{entry.month}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-1">
-                          <button onClick={() => openEdit(entry)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors">
-                            <Pencil className="w-3.5 h-3.5" />
-                          </button>
-                          <button onClick={() => handleDelete(entry.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors">
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          {canEdit && (
+                            <>
+                              <button onClick={() => openEdit(entry)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors">
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                              <button onClick={() => handleDelete(entry.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors">
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>
