@@ -59,11 +59,21 @@ export default function App() {
   }, [])
 
   // Entry CRUD
-  const handleSetEntries = useCallback(async (updater) => {
+  const handleSetEntries = useCallback((updater) => {
     setEntries(prev => {
       const next = typeof updater === 'function' ? updater(prev) : updater
-      next.forEach(e => { if (!prev.find(p => p.id === e.id) || prev.find(p => p.id === e.id && JSON.stringify(p) !== JSON.stringify(e))) upsertEntry(e).catch(console.error) })
-      prev.forEach(p => { if (!next.find(n => n.id === p.id)) deleteEntry(p.id).catch(console.error) })
+      // React 18: 사이드이펙트(upsert)는 updater 밖에서 실행
+      setTimeout(() => {
+        next.forEach(e => {
+          const old = prev.find(p => p.id === e.id)
+          if (!old || JSON.stringify(old) !== JSON.stringify(e)) {
+            upsertEntry(e).catch(console.error)
+          }
+        })
+        prev.forEach(p => {
+          if (!next.find(n => n.id === p.id)) deleteEntry(p.id).catch(console.error)
+        })
+      }, 0)
       return next
     })
   }, [])

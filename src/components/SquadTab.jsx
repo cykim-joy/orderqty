@@ -9,6 +9,7 @@ const EMPTY_FORM = {
 
 const now = new Date()
 const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+const currentDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
 
 const TIER_COLORS = ['bg-amber-100 text-amber-700', 'bg-sky-100 text-sky-700', 'bg-slate-100 text-slate-600', 'bg-rose-100 text-rose-700']
 const getTierColor = (tier) => {
@@ -25,7 +26,7 @@ export default function SquadTab({ entries, setEntries, skus, settings, canEdit 
   const [filterSku, setFilterSku] = useState('전체')
   const [showModal, setShowModal] = useState(false)
   const [editingId, setEditingId] = useState(null)
-  const [form, setForm] = useState({ ...EMPTY_FORM, month: currentMonth })
+  const [form, setForm] = useState({ ...EMPTY_FORM, month: currentDate })
   const [errors, setErrors] = useState({})
   const [csvStatus, setCsvStatus] = useState(null)
   const csvFileRef = useRef(null)
@@ -69,7 +70,7 @@ export default function SquadTab({ entries, setEntries, skus, settings, canEdit 
 
   const openAdd = () => {
     setEditingId(null)
-    setForm({ ...EMPTY_FORM, month: filterMonth || currentMonth })
+    setForm({ ...EMPTY_FORM, month: filterMonth ? filterMonth + '-01' : currentDate })
     setErrors({})
     setShowModal(true)
   }
@@ -550,8 +551,8 @@ export default function SquadTab({ entries, setEntries, skus, settings, canEdit 
             <div className="px-6 py-4 space-y-4">
               {/* Month */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">월 <span className="text-red-500">*</span></label>
-                <input type="month" value={form.month} onChange={e => setForm(p => ({ ...p, month: e.target.value }))}
+                <label className="block text-sm font-medium text-gray-700 mb-1">PO Date <span className="text-red-500">*</span></label>
+                <input type="date" value={form.month} onChange={e => setForm(p => ({ ...p, month: e.target.value }))}
                   className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${errors.month ? 'border-red-400' : 'border-gray-200'}`} />
                 {errors.month && <p className="text-xs text-red-500 mt-1">{errors.month}</p>}
               </div>
