@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef } from 'react'
+import { upsertEntry } from '../utils/db'
 import { Plus, Pencil, Trash2, X, CheckSquare, Square, ChevronDown, Filter, Upload, Download, CheckCircle, AlertCircle } from 'lucide-react'
 import { v4 as uuidv4 } from 'uuid'
 
@@ -120,7 +121,14 @@ export default function SquadTab({ entries, setEntries, skus, settings, canEdit 
   }
 
   const toggleSecured = (id) => {
-    setEntries(prev => prev.map(e => e.id === id ? { ...e, secured: !e.secured } : e))
+    const entry = entries.find(e => e.id === id)
+    if (!entry) return
+    const updated = { ...entry, secured: !entry.secured }
+    setEntries(prev => prev.map(e => e.id === id ? updated : e))
+    upsertEntry(updated).catch(err => {
+      console.error('확보여부 저장 실패:', err)
+      alert('저장 중 오류가 발생했습니다. 콘솔을 확인해주세요.')
+    })
   }
 
   const getSku = (skuId) => skus.find(s => s.id === skuId)
@@ -318,8 +326,13 @@ export default function SquadTab({ entries, setEntries, skus, settings, canEdit 
     const raw = pendingSecured[entry.id]
     if (raw === undefined) return
     const val = Math.max(0, Math.min(Number(raw) || 0, Number(entry.backorderQty || 0)))
-    setEntries(prev => prev.map(e => e.id === entry.id ? { ...e, securedQty: val } : e))
+    const updated = { ...entry, securedQty: val }
+    setEntries(prev => prev.map(e => e.id === entry.id ? updated : e))
     setPendingSecured(prev => { const n = { ...prev }; delete n[entry.id]; return n })
+    upsertEntry(updated).catch(err => {
+      console.error('확보수량 저장 실패:', err)
+      alert('저장 중 오류가 발생했습니다. 콘솔을 확인해주세요.')
+    })
   }
 
   return (
