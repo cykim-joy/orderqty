@@ -123,8 +123,18 @@ export default function SquadTab({ entries, setEntries, skus, settings, canEdit 
   const toggleSecured = (id) => {
     const entry = entries.find(e => e.id === id)
     if (!entry) return
-    const updated = { ...entry, secured: !entry.secured }
+    const newSecured = !entry.secured
+    const updated = {
+      ...entry,
+      secured: newSecured,
+      // 체크 시 백오더 수량을 확보 수량에 자동 입력
+      securedQty: newSecured ? Number(entry.backorderQty || 0) : entry.securedQty,
+    }
     setEntries(prev => prev.map(e => e.id === id ? updated : e))
+    // 인라인 입력 중이던 값 초기화 (체크 시 자동값으로 덮어씀)
+    if (newSecured) {
+      setPendingSecured(prev => { const n = { ...prev }; delete n[id]; return n })
+    }
     upsertEntry(updated).catch(err => {
       console.error('확보여부 저장 실패:', err)
       alert('저장 중 오류가 발생했습니다. 콘솔을 확인해주세요.')
