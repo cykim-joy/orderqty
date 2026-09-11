@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import { upsertEntry } from '../utils/db'
 import { Plus, Pencil, Trash2, X, CheckSquare, Square, ChevronDown, Filter, Upload, Download, CheckCircle, AlertCircle } from 'lucide-react'
 import { v4 as uuidv4 } from 'uuid'
@@ -127,19 +127,29 @@ export default function SquadTab({ entries, setEntries, skus, settings, canEdit 
     const updated = {
       ...entry,
       secured: newSecured,
-      // 체크 시 백오더 수량을 확보 수량에 자동 입력
-      securedQty: newSecured ? Number(entry.backorderQty || 0) : entry.securedQty,
+      // 체크 시 백오더 수량 자동 입력, 해제 시 0으로 초기화
+      securedQty: newSecured ? Number(entry.backorderQty || 0) : 0,
     }
     setEntries(prev => prev.map(e => e.id === id ? updated : e))
-    // 인라인 입력 중이던 값 초기화 (체크 시 자동값으로 덮어씀)
-    if (newSecured) {
-      setPendingSecured(prev => { const n = { ...prev }; delete n[id]; return n })
-    }
+    // 인라인 입력 중이던 값 항상 초기화
+    setPendingSecured(prev => { const n = { ...prev }; delete n[id]; return n })
     upsertEntry(updated).catch(err => {
       console.error('확보여부 저장 실패:', err)
       alert('저장 중 오류가 발생했습니다. 콘솔을 확인해주세요.')
     })
   }
+
+  // 기존 비정상 데이터 정리: secured=false인데 securedQty>0인 행을 0으로 초기화
+  const cleanedRef = useRef(false)
+  useEffect(() => {
+    if (cleanedRef.current || entries.length === 0) return
+    cleanedRef.current = true
+    const toFix = entries.filter(e => !e.secured && Number(e.securedQty) > 0)
+    if (toFix.length === 0) return
+    const fixed = toFix.map(e => ({ ...e, securedQty: 0 }))
+    setEntries(prev => prev.map(e => fixed.find(f => f.id === e.id) || e))
+    fixed.forEach(e => upsertEntry(e).catch(console.error))
+  }, [entries])
 
   const getSku = (skuId) => skus.find(s => s.id === skuId)
 
