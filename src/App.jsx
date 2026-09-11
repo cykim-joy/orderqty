@@ -37,7 +37,17 @@ export default function App() {
     Promise.all([fetchSkus(), fetchEntries(), fetchSettings(), fetchFeedbackNotes(), fetchAuthorizedEmails()])
       .then(([s, e, st, fn, ae]) => {
         setSkus(s)
-        setEntries(e)
+        // secured=false인데 securedQty > 0인 기존 데이터 정리 (이전 버전 버그 수정)
+        const normalized = e.map(entry =>
+          !entry.secured && Number(entry.securedQty) > 0
+            ? { ...entry, securedQty: 0 }
+            : entry
+        )
+        const toFix = normalized.filter((entry, i) => entry !== e[i])
+        setEntries(normalized)
+        if (toFix.length > 0) {
+          toFix.forEach(entry => upsertEntry(entry).catch(console.error))
+        }
         setSettings(migrateSettings(st || DEFAULT_SETTINGS))
         setFeedbackNotes(fn)
         setAuthorizedEmails(ae)
